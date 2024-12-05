@@ -28,6 +28,8 @@
 // @compatible        safari 未测试
 // @contributionURL https://ko-fi.com/hoothin
 // @contributionAmount 1
+// @downloadURL https://update.greasyfork.org/scripts/25068/DownloadAllContent.user.js
+// @updateURL https://update.greasyfork.org/scripts/25068/DownloadAllContent.meta.js
 // ==/UserScript==
 
 if (window.top != window.self) {
@@ -245,6 +247,7 @@ if (window.top != window.self) {
                 abort:"跳过此章",
                 save:"保存当前",
                 saveAsMd:"存为 Markdown",
+                saveAsJSON: "存为 JSON",
                 downThreadNum:"设置同时下载的线程数，负数为单线程下载间隔",
                 enableTouch:"在移动端按→↓←↑的方向滑动屏幕画正方形立即开始下载",
                 customTitle:"自定义章节标题，输入内页文字对应选择器",
@@ -294,6 +297,7 @@ if (window.top != window.self) {
                 abort:"跳過此章",
                 save:"保存當前",
                 saveAsMd:"存爲 Markdown",
+                saveAsJSON: "存爲 JSON",
                 downThreadNum:"設置同時下載的綫程數，負數為單線程下載間隔",
                 enableTouch:"在行動端按→↓←↑的方向滑動螢幕畫方立即開始下載",
                 customTitle:"自訂章節標題，輸入內頁文字對應選擇器",
@@ -405,6 +409,7 @@ if (window.top != window.self) {
                 abort:"Abort",
                 save:"Save",
                 saveAsMd:"Save as Markdown",
+                saveAsJSON: "Save as JSON",
                 downThreadNum:"Set threadNum for download, negative means interval of single thread",
                 enableTouch:"On the mobile device, slide the screen in the direction of →↓←↑ to draw a square will start downloading immediately",
                 customTitle: "Customize the chapter title, enter the selector on inner page",
@@ -512,6 +517,7 @@ if (window.top != window.self) {
     }
 
     var saveAsZip = true;
+    var saveWithHref = true;
     function filterList(list) {
         if (!GM_getValue("showFilterList")) {
             indexDownload(list);
@@ -885,6 +891,7 @@ if (window.top != window.self) {
                     <button id="abortRequest" style="display:none;">${getI18n('abort')}</button>
                     <button id="tempSaveTxt">${getI18n('save')}</button>
                     <button id="saveAsMd" title="${getI18n('saveAsMd')}">Markdown</button>
+                    <button id="saveAsJSON" title="${getI18n('saveAsJSON')}">JSON</button>
                 </div>
             </div>`);
         txtDownWords=txtDownContent.querySelector("#txtDownWords");
@@ -897,12 +904,13 @@ if (window.top != window.self) {
     }
 
     function saveContent() {
+        var blob;
         if (win.downloadAllContentSaveAsZip && saveAsZip) {
             win.downloadAllContentSaveAsZip(rCats, i18n.info.replace("#t#", location.href), content => {
                 saveAs(content, document.title.replace(/[\*\/:<>\?\\\|\r\n,]/g, "_") + ".zip");
             });
         } else {
-            var blob = new Blob([i18n.info.replace("#t#", location.href) + "\r\n\r\n" + rCats.join("\r\n\r\n")], {type: "text/plain;charset=utf-8"});
+            blob = new Blob([i18n.info.replace("#t#", location.href) + "\r\n\r\n" + rCats.join("\r\n\r\n")], {type: "text/plain;charset=utf-8"});
             saveAs(blob, document.title.replace(/[\*\/:<>\?\\\|\r\n,]/g, "_") + ".txt");
         }
     }
@@ -911,6 +919,8 @@ if (window.top != window.self) {
         var tempSavebtn = txtDownContent.querySelector('#tempSaveTxt');
         var abortbtn = txtDownContent.querySelector('#abortRequest');
         var saveAsMd = txtDownContent.querySelector('#saveAsMd');
+        var saveAsJSON = txtDownContent.querySelector('#saveAsJSON');
+
         tempSavebtn.onclick = function(){
             saveContent();
             console.log(curRequests);
@@ -927,6 +937,25 @@ if (window.top != window.self) {
             });
             var blob = new Blob([txt], {type: "text/plain;charset=utf-8"});
             saveAs(blob, document.title.replace(/[\*\/:<>\?\\\|\r\n,]/g, "_") + ".md");
+        }
+        saveAsJSON.onclick = function(){
+            let txt = [];
+            rCats.forEach(cat => {
+                // 按\r\n分割章节名和章节内容，并分别去除前后空格和换行符
+                let catArr = cat.split("\r\n", 3);
+                // 将章节名和章节内容转换为json格式
+                let catJson = {
+                    title: catArr[0].trim(),
+                    url: catArr[1].trim(),
+                    abstract: catArr[2].trim()
+                };
+                // 将json格式的章节内容添加到txt数组中
+                txt.push(catJson);
+            });
+            // 将txt数组转换为json字符串,并格式化
+            txt = JSON.stringify(txt, null, 2);
+            var blob = new Blob([txt], {type: "text/plain;charset=utf-8"});
+            saveAs(blob, document.title.replace(/[\*\/:<>\?\\\|\r\n,]/g, "_") + ".json");
         }
     }
 
@@ -1330,7 +1359,11 @@ if (window.top != window.self) {
         var waitForComplete;
         function processDoc(i, aTag, doc, cause, check){
             let cbFunc=content=>{
-                rCats[i]=(aTag.innerText.replace(/[\r\n\t]/g, "") + "\r\n" + (cause || '') + content.replace(/\s*$/, ""));
+                let isHref = "";
+                if (saveWithHref){
+                    isHref = aTag.href + '\r\n';
+                }
+                rCats[i]=(aTag.innerText.replace(/[\r\n\t]/g, "") + "\r\n" + isHref + (cause || '') + content.replace(/\s*$/, ""));
                 curRequests = curRequests.filter(function(e){return e[0]!=i});
                 txtDownContent.style.display="block";
                 txtDownWords.innerHTML=getI18n("downloading",[downNum,(aEles.length-downNum),aTag.innerText]);
@@ -1340,7 +1373,7 @@ if (window.top != window.self) {
                         if(downNum==aEles.length){
                             txtDownWords.innerHTML=getI18n("complete",[downNum]);
                             sortInnerPage();
-                            saveContent();
+                            // saveContent();
                         }
                     },3000);
                 }
